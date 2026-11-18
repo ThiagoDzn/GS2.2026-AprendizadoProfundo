@@ -2,14 +2,54 @@ import streamlit as st
 import pandas as pd
 import joblib
 import tensorflow as tf
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.compose import ColumnTransformer
 
 st.set_page_config(page_title="Classificador SSP-SP | MLP", page_icon="📱", layout="centered")
 
 @st.cache_resource
 def carregar_modelo():
     modelo = tf.keras.models.load_model("modelo_mlp.keras")
-    prep = joblib.load("preprocessador.joblib")
-    return modelo, prep
+    
+    # Carrega apenas as listas de categorias (sem depender da versão do sklearn do Colab)
+    try:
+        prep = joblib.load("preprocessador.joblib")
+        bairros = prep['bairros']
+        periodos = prep['periodos']
+        dias = prep['dias']
+        locais = prep['locais']
+        marcas = prep['marcas']
+    except Exception:
+        # Fallback caso o joblib falhe por versão do Python
+        import pickle
+        with open("preprocessador.joblib", "rb") as f:
+            prep = pickle.load(f)
+            bairros = prep['bairros']
+            periodos = prep['periodos']
+            dias = prep['dias']
+            locais = prep['locais']
+            marcas = prep['marcas']
+
+    # Reconstrói o OneHotEncoder nativamente na versão do Streamlit
+    features = ['BAIRRO_TRATADO', 'PERIODO', 'DIA_SEMANA', 'LOCAL_TRATADO', 'MARCA_TRATADA']
+    categorias = [bairros, periodos, dias, locais, marcas]
+    
+    encoder = ColumnTransformer(
+        transformers=[('cat', OneHotEncoder(categories=categorias, handle_unknown='ignore', sparse_output=False), features)]
+    )
+    # Ajusta com uma linha dummy apenas para inicializar o transformador
+    df_dummy = pd.DataFrame([[bairros[0], periodos[0], dias[0], locais[0], marcas[0]]], columns=features)
+    encoder.fit(df_dummy)
+
+    dados = {
+        'encoder': encoder,
+        'bairros': bairros,
+        'periodos': periodos,
+        'dias': dias,
+        'locais': locais,
+        'marcas': marcas
+    }
+    return modelo, dados
 
 modelo, prep = carregar_modelo()
 
